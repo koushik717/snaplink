@@ -1,5 +1,7 @@
 # SnapLink — High-Throughput URL Shortener
 
+[Live Demo](https://snaplink-1-0uyu.onrender.com/swagger-ui.html) | [API Health](https://snaplink-1-0uyu.onrender.com/actuator/health)
+
 A production-grade URL shortening service designed for high throughput and observability. Features distributed Base62 ID generation, Redis caching with intelligent TTL, token-bucket rate limiting per API key, a click analytics pipeline (geo, referrer, device), full request tracing, and Prometheus/Grafana monitoring — load-tested at **12,000+ requests/second**.
 
 ## Architecture
@@ -83,8 +85,8 @@ A production-grade URL shortening service designed for high throughput and obser
 ### Run with Docker Compose
 ```bash
 docker-compose up -d
-# App: http://localhost:8080
-# Swagger: http://localhost:8080/swagger-ui.html
+# App: https://snaplink-1-0uyu.onrender.com
+# Swagger: https://snaplink-1-0uyu.onrender.com/swagger-ui.html
 # Prometheus: http://localhost:9090
 # Grafana: http://localhost:3000 (admin/admin)
 ```
@@ -98,7 +100,7 @@ docker-compose up -d
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
 # Health check
-curl http://localhost:8080/actuator/health
+curl https://snaplink-1-0uyu.onrender.com/actuator/health
 ```
 
 ## API Reference
@@ -121,7 +123,7 @@ curl http://localhost:8080/actuator/health
 
 ### Example: Create Short URL
 ```bash
-curl -X POST http://localhost:8080/api/v1/shorten \
+curl -X POST https://snaplink-1-0uyu.onrender.com/api/v1/shorten \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"url":"https://www.example.com/very/long/path"}'
@@ -129,7 +131,7 @@ curl -X POST http://localhost:8080/api/v1/shorten \
 ```json
 {
   "shortCode": "aB3x7K",
-  "shortUrl": "http://localhost:8080/aB3x7K",
+  "shortUrl": "https://snaplink-1-0uyu.onrender.com/aB3x7K",
   "originalUrl": "https://www.example.com/very/long/path",
   "createdAt": "2026-03-08T10:30:00Z"
 }
@@ -156,4 +158,4 @@ k6 run k6/load-test.js
 
 ## Swagger UI
 
-Visit http://localhost:8080/swagger-ui.html for interactive API documentation.
+Visit https://snaplink-1-0uyu.onrender.com/swagger-ui.html for interactive API documentation.
