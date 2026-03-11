@@ -62,6 +62,8 @@ A production-grade URL shortening service designed for high throughput and obser
 - **Request tracing** with X-Request-Id correlation
 - **Full observability** via Prometheus metrics + Grafana dashboards
 - **Async click recording** — redirects are never blocked by analytics writes
+- **Zero-Downtime AWS Deployment** via Terraform (ECS Fargate, RDS, ElastiCache, ALB)
+- **Automated CI/CD** via GitHub Actions to Amazon ECR and ECS
 - **Load tested** at 12,000+ req/sec with k6
 
 ## Performance
@@ -156,6 +158,45 @@ brew install k6
 k6 run k6/load-test.js
 ```
 
-## Swagger UI
-
 Visit https://snaplink-1-0uyu.onrender.com/swagger-ui.html for interactive API documentation.
+
+## AWS Deployment (Terraform + ECS Fargate)
+
+SnapLink is designed to be deployed on AWS using **Terraform** for Infrastructure as Code and **GitHub Actions** for CI/CD.
+
+### Infrastructure Architecture
+
+The Terraform configuration provisions a highly available, production-ready environment:
+
+- **VPC**: Multi-AZ public and private subnets with a NAT Gateway.
+- **Compute (ECS Fargate)**: Serverless container execution scaling securely in private subnets.
+- **Database (RDS PostgreSQL)**: Managed relational database in private subnets.
+- **Cache (ElastiCache Redis)**: Managed in-memory data store for caching and rate limiting.
+- **Load Balancer (ALB)**: Application Load Balancer in public subnets routing external traffic to ECS.
+- **Registry (ECR)**: Private Docker registry for application images.
+- **Monitoring (CloudWatch)**: Alarms for high CPU/Memory and ALB latency.
+
+### CI/CD Pipeline
+
+The `.github/workflows/deploy-aws.yml` automates deployments:
+1. Triggers on push to `main` branch.
+2. Authenticates with AWS using IAM credentials.
+3. Builds and tags the Docker image with the commit SHA and `latest`.
+4. Pushes the image to Amazon ECR.
+5. Updates the ECS Task Definition with the new image.
+6. Deploys the new task to ECS Fargate with zero downtime.
+
+### How to Deploy
+
+1. Set up your AWS credentials as GitHub Repository Secrets:
+   - `AWS_ACCESS_KEY_ID`
+   - `AWS_SECRET_ACCESS_KEY`
+
+2. Initialize and apply the Terraform configuration:
+```bash
+cd terraform
+terraform init
+terraform apply
+```
+
+3. Push to `main` to trigger the GitHub Actions workflow, which will build and deploy your Docker image to the ECS cluster.

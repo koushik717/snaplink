@@ -52,3 +52,7 @@ logs/
 
 # Generated
 HELP.md
+
+.terraform/
+
+.terraform/
