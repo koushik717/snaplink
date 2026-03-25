@@ -1,0 +1,108 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SnapLink Spring Boot App — Service + Deployment
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: snaplink-app
+  namespace: snaplink
+spec:
+  # NodePort makes this accessible from outside the cluster (your Mac).
+  # Use: kubectl port-forward svc/snaplink-app 8090:8080 -n snaplink
+  type: NodePort
+  selector:
+    app: snaplink-app
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30090
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: snaplink-app
+  namespace: snaplink
+  annotations:
+    # Documents the rolling-update strategy — interviewers love this.
+    # K8s replaces pods one at a time: bring 1 new pod up, take 1 old pod down.
+    # Result: zero downtime during deploys.
+    kubernetes.io/change-cause: "initial deployment"
+spec:
+  replicas: 2              # 2 replicas = survive a single pod crash
+  selector:
+    matchLabels:
+      app: snaplink-app
+
+  # ── ROLLING UPDATE STRATEGY ───────────────────────────────────────────────
+  # What: How K8s replaces old pods when you push a new image.
+  # maxSurge=1: allow 1 extra pod above replicas during rollout
+  # maxUnavailable=0: never take a pod down until a healthy replacement is up
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        app: snaplink-app
+    spec:
+      containers:
+        - name: snaplink-app
+          image: snaplink:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+
+          # Load all non-sensitive config from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: snaplink-config
+
+          # Load sensitive credentials from Secret
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: snaplink-secret
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: snaplink-secret
+                  key: SPRING_DATASOURCE_PASSWORD
+
+          # ── READINESS PROBE ─────────────────────────────────────────────
+          # Spring Boot Actuator's /actuator/health returns:
+          #   200 when app + DB + Redis connections are all UP
+          #   503 when any dependency is DOWN
+          # K8s only sends traffic to this pod when it returns 200.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30   # Spring Boot takes ~25s to start
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+
+          # ── RESOURCE LIMITS ──────────────────────────────────────────────
+          # requests: minimum guaranteed resources (used by scheduler to place pod)
+          # limits: hard cap — container is killed if it exceeds memory limit
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"       # 250 millicores = 0.25 CPU core
+            limits:
+              memory: "1Gi"
+              cpu: "500m"

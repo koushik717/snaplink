@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CONFIGMAP — non-sensitive configuration injected as env vars into pods.
+# ─────────────────────────────────────────────────────────────────────────────
+# What: A K8s object that stores plain-text key/value config.
+# Why:  Decouples config from the Docker image. Change a URL without rebuilding.
+#       This holds everything that is NOT a password.
+# Without it: You'd hardcode config into the Deployment — painful to change,
+#             and risks leaking secrets into source control.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: snaplink-config
+  namespace: snaplink
+data:
+  SPRING_PROFILES_ACTIVE: "k8s"
+  # "postgres" resolves to the postgres ClusterIP Service in this namespace
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/snaplink"
+  SPRING_DATA_REDIS_HOST: "redis"
+  SPRING_DATA_REDIS_PORT: "6379"
+  # Inside the cluster, the app Service is named "snaplink-app"
+  SNAPLINK_BASE_URL: "http://snaplink-app:8080"
+  # Expose all actuator endpoints (needed for readiness probe)
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"

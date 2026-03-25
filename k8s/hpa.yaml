@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# HorizontalPodAutoscaler — auto-scale SnapLink 1-5 replicas based on CPU.
+# ─────────────────────────────────────────────────────────────────────────────
+# Prerequisites: metrics-server must be running in the cluster.
+#   minikube addons enable metrics-server
+#
+# What it does every 15 seconds:
+#   1. Queries metrics-server for avg CPU across all snaplink-app pods
+#   2. desired_replicas = ceil(current_replicas * (current_cpu / target_cpu))
+#   3. If desired > current → scale UP (up to maxReplicas=5)
+#   4. If desired < current → scale DOWN (after 5min cooldown, to minReplicas=1)
+#
+# Test it: kubectl run -i --tty load-generator --rm --image=busybox:1.28 \
+#           --restart=Never -n snaplink -- /bin/sh -c \
+#           "while sleep 0.01; do wget -q -O- http://snaplink-app:8080/; done"
+# Watch:   kubectl get hpa snaplink-hpa -n snaplink -w
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: snaplink-hpa
+  namespace: snaplink
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: snaplink-app
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70   # scale up when avg CPU > 70%

@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PostgreSQL — Service + Deployment
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres           # DNS name other pods use: "postgres:5432"
+  namespace: snaplink
+spec:
+  type: ClusterIP          # internal-only; no external access needed
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: snaplink
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: snaplink
+            # Pull credentials from the Secret (not the ConfigMap) —
+            # valueFrom.secretKeyRef injects the decoded value at runtime.
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: snaplink-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: snaplink-secret
+                  key: POSTGRES_PASSWORD
+
+          # Readiness probe: pg_isready exits 0 when Postgres accepts connections.
+          # The app pod won't receive traffic until Postgres is truly ready.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "snaplink"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 5
+
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "snaplink"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+
+      volumes:
+        - name: pgdata
+          emptyDir: {}    # use PVC in production for persistence
