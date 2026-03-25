@@ -1,5 +1,7 @@
 # SnapLink — High-Throughput URL Shortener
 
+![Java](https://img.shields.io/badge/Java_17-ED8B00?style=flat&logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?style=flat&logo=springboot&logoColor=white) ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat&logo=kubernetes&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white)
+
 [Live Demo](https://snaplink-1-0uyu.onrender.com/swagger-ui.html) | [API Health](https://snaplink-1-0uyu.onrender.com/actuator/health)
 
 A production-grade URL shortening service designed for high throughput and observability. Features distributed Base62 ID generation, Redis caching with intelligent TTL, token-bucket rate limiting per API key, a click analytics pipeline (geo, referrer, device), full request tracing, and Prometheus/Grafana monitoring — load-tested at **12,000+ requests/second**.
@@ -50,6 +52,7 @@ A production-grade URL shortening service designed for high throughput and obser
 | Cache | Redis 7 | Caching + rate limiting in one |
 | Monitoring | Prometheus + Grafana | Industry standard observability |
 | Containerization | Docker + Docker Compose | Reproducible deployment |
+| Orchestration | Kubernetes (minikube, Helm) | Production-grade container management |
 | Load Testing | k6 (Grafana Labs) | Modern, scriptable load testing |
 | API Docs | SpringDoc OpenAPI (Swagger) | Professional API documentation |
 
@@ -62,6 +65,7 @@ A production-grade URL shortening service designed for high throughput and obser
 - **Request tracing** with X-Request-Id correlation
 - **Full observability** via Prometheus metrics + Grafana dashboards
 - **Async click recording** — redirects are never blocked by analytics writes
+- **Kubernetes deployment** with HPA (1-5 replicas), ConfigMaps for env config, and zero-downtime rolling updates
 - **Zero-Downtime AWS Deployment** via Terraform (ECS Fargate, RDS, ElastiCache, ALB)
 - **Automated CI/CD** via GitHub Actions to Amazon ECR and ECS
 - **Load tested** at 12,000+ req/sec with k6
@@ -200,3 +204,142 @@ terraform apply
 ```
 
 3. Push to `main` to trigger the GitHub Actions workflow, which will build and deploy your Docker image to the ECS cluster.
+
+---
+
+## Kubernetes Deployment (local minikube)
+
+The `k8s/` directory contains production-style manifests and a Helm chart for deploying SnapLink locally.
+
+### Prerequisites
+
+```bash
+brew install minikube helm
+minikube start --driver=docker --cpus=4 --memory=4096
+minikube addons enable metrics-server   # required for HPA
+```
+
+### Option A — Raw manifests (step by step, best for learning)
+
+```bash
+# Build image inside minikube's Docker daemon
+eval $(minikube docker-env)
+docker build -t snaplink:latest .
+
+# Deploy in dependency order
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/redis.yaml
+kubectl apply -f k8s/app.yaml
+kubectl apply -f k8s/hpa.yaml
+
+# Watch everything come up
+kubectl get pods -n snaplink -w
+```
+
+### Option B — Helm chart (one command, best for repeatable deploys)
+
+```bash
+eval $(minikube docker-env) && docker build -t snaplink:latest .
+helm install snaplink ./snaplink-chart
+```
+
+Override values at install time:
+```bash
+# Deploy 3 replicas with a custom DB password
+helm install snaplink ./snaplink-chart \
+  --set app.replicas=3 \
+  --set postgres.password=mysecretpassword
+```
+
+Upgrade a running deployment:
+```bash
+helm upgrade snaplink ./snaplink-chart --set app.replicas=4
+```
+
+Uninstall:
+```bash
+helm uninstall snaplink
+```
+
+### Access the app
+
+```bash
+# Port-forward to localhost:8090
+kubectl port-forward svc/snaplink-app 8090:8080 -n snaplink
+
+# Open in browser
+open http://localhost:8090
+open http://localhost:8090/swagger-ui.html
+curl http://localhost:8090/actuator/health
+```
+
+### kubectl cheatsheet (run on this cluster)
+
+```bash
+# See all running pods
+kubectl get pods -n snaplink
+
+# Inspect a pod — see events, probe status, env vars, resource usage
+kubectl describe pod -l app=snaplink-app -n snaplink
+
+# Stream live logs from the app
+kubectl logs -l app=snaplink-app -n snaplink -f
+
+# Get all services (note ClusterIP vs NodePort)
+kubectl get svc -n snaplink
+
+# Scale to 3 replicas (zero-downtime rolling update)
+kubectl scale deployment snaplink-app --replicas=3 -n snaplink
+
+# Roll back to the previous image version
+kubectl rollout undo deployment/snaplink-app -n snaplink
+
+# Watch the HPA auto-scale in real time
+kubectl get hpa snaplink-hpa -n snaplink -w
+
+# Execute a command inside a running pod
+kubectl exec -it deployment/snaplink-app -n snaplink -- /bin/sh
+```
+
+### Generate load to trigger HPA
+
+```bash
+# Run a load generator pod, watch HPA scale 1→5 replicas
+kubectl run -i --tty load-gen --rm --image=busybox:1.28 \
+  --restart=Never -n snaplink -- /bin/sh -c \
+  "while sleep 0.01; do wget -q -O- http://snaplink-app:8080/actuator/health; done"
+
+# In another terminal, watch autoscaling
+kubectl get hpa snaplink-hpa -n snaplink -w
+```
+
+### K8s manifest structure
+
+```
+k8s/
+├── namespace.yaml    # Isolation boundary: all objects live in "snaplink" namespace
+├── configmap.yaml    # Non-sensitive config (DB URL, Redis host, profile)
+├── secret.yaml       # Sensitive config (passwords) — base64 encoded
+├── postgres.yaml     # Postgres Deployment + ClusterIP Service
+├── redis.yaml        # Redis Deployment + ClusterIP Service
+├── app.yaml          # SnapLink Deployment + NodePort Service (rolling update strategy)
+└── hpa.yaml          # HorizontalPodAutoscaler: 1-5 replicas at 70% CPU
+
+snaplink-chart/       # Helm chart — parameterises all of the above
+├── Chart.yaml
+├── values.yaml       # All tuneable defaults in one place
+└── templates/        # Same manifests but with {{ .Values.* }} placeholders
+```
+
+### Resume bullets
+
+```
+• Orchestrated 3-service deployment (Spring Boot + Redis + PostgreSQL) on Kubernetes
+  with readiness probes, ConfigMaps, Secrets, and zero-downtime rolling updates
+
+• Implemented HorizontalPodAutoscaler scaling SnapLink from 1-5 replicas at 70% CPU
+  threshold; packaged full deployment as a Helm chart for one-command installs
+```
