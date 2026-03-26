@@ -334,12 +334,3 @@ snaplink-chart/       # Helm chart — parameterises all of the above
 └── templates/        # Same manifests but with {{ .Values.* }} placeholders
 ```
 
-### Resume bullets
-
-```
-• Orchestrated 3-service deployment (Spring Boot + Redis + PostgreSQL) on Kubernetes
-  with readiness probes, ConfigMaps, Secrets, and zero-downtime rolling updates
-
-• Implemented HorizontalPodAutoscaler scaling SnapLink from 1-5 replicas at 70% CPU
-  threshold; packaged full deployment as a Helm chart for one-command installs
-```
